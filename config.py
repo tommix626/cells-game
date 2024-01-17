@@ -8,7 +8,7 @@ class Config(object):
         self.agent_output_dim = 5
         self.min_resource = 1
         self.max_resource = 10
-        self.simulation_time = 100 #time goes from -100 to 100.
+        self.simulation_time = 1000 #time goes from -100 to 100.
         self.num_generations = 10
 
         # only the top 20% of the agents survive to the next generation, and they will have 2 children each, and 30% of the next generation will be bred from the survivors, and 10% of the next generation will be randomly generated.

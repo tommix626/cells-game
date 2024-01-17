@@ -24,6 +24,7 @@ class SelectionPool(object):
         for survivor in survivors:
             for i in range(self.num_children):
                 next_generation.append(self.mutate_survivor(survivor))
+            survivor.reset()
         # breed the survivors by combining random two's brains and added them to the next generation
         for i in range(self.num_breeds):
             next_generation.append(self.breed_survivors(random.choice(survivors), random.choice(survivors)))
@@ -38,7 +39,7 @@ class SelectionPool(object):
         child.tag = survivor.tag + '-' + str(random.randint(0, 99))
         while (child.tag in self.create_dict()):
             child.tag = survivor.tag + '-' + str(random.randint(0, 99))
-
+        child.reset()
         return child
 
     def breed_survivors(self, survivor1, survivor2):
@@ -49,7 +50,7 @@ class SelectionPool(object):
         child.tag = survivor1.tag + '&' + survivor2.tag + '-' + str(random.randint(0,99))
         while(child.tag in self.create_dict()):
             child.tag = survivor1.tag + '&' + survivor2.tag + '-' + str(random.randint(0,99))
-
+        child.reset()
         return child
 
     def __iter__(self):

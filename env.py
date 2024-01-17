@@ -10,15 +10,22 @@ from selection import SelectionPool
 
 # The grid is a 2D array of GridEntry objects. Each GridEntry object has a resource amount and an agent tag/strength.
 class GridEntry(object):
-    def __init__(self, resource, initial_wall):
+    def __init__(self, resource, initial_wall,x,y):
         self.resource = resource #TODO: refractor to resource_richness, and change agent.score to resource.
-        self.agent_tag = "ENV"  # the agent conquering this grid.
-        self.agent_strength = initial_wall # the strength of the agent conquering this grid.
+        self.agent_tag = "_ENV_"  # the agent conquering this grid.
+        self.agent_strength = 1 # the strength of the agent conquering this grid.
+        self.x = x
+        self.y = y
 
     def conquer(self, agent_tag, strength=1):
         if (self.agent_strength > strength):
             self.agent_strength -= strength
             return None
+        elif (self.agent_strength == strength):
+            original_agent_tag = self.agent_tag
+            self.agent_tag = "_ENV_"
+            self.agent_strength = 0
+            return original_agent_tag
         else:
             original_agent_tag = self.agent_tag
             self.agent_tag = agent_tag
@@ -39,13 +46,17 @@ class GridEntry(object):
         else:
             return self.conquer(agent_tag, strength)
 
+    def __str__(self):
+        return f"[{self.x},{self.y}]" + "Resource: " + str(self.resource) + ", Agent: " + self.agent_tag + ", Strength: " + str(self.agent_strength)
+
+    # def __int__(self):
+    #     return self.agent_strength
 
 class Env(object):
     def __init__(self, config):
         self.config = config
-        self.grid = []
         self.grid_size = config.grid_size
-        self.generate_grid(config.grid_size)
+        self.grid = self.reset_grid(config.grid_size)
         self.agent_rank = []
         agents_pool = self.generate_first_gen_agents(config.num_agents)
         self.agents_pool = SelectionPool(agents_pool,config)  # manage evolution for all the agents in the pool
@@ -56,12 +67,14 @@ class Env(object):
 
         self.fig, self.ax = plt.subplots(figsize=(3,3))
         self.im = None
-    def generate_grid(self, grid_size):  # generate a grid of size grid_size, with random distributed resources
+    def reset_grid(self, grid_size):  # generate a grid of size grid_size, with random distributed resources
+        grid = []
         for i in range(grid_size):
-            self.grid.append([])
+            grid.append([])
             for j in range(grid_size):
                 rsrc = random.randint(self.config.min_resource, self.config.max_resource)
-                self.grid[i].append(GridEntry(rsrc, (rsrc * 0.1)))
+                grid[i].append(GridEntry(rsrc, (rsrc * 0.1),i,j))
+        return grid
 
     def generate_first_gen_agents(self, num_agents):
         # generate a list of agents with same init strength and different tags (Strings from "A" to "Z" to "AA"...)
@@ -86,6 +99,7 @@ class Env(object):
             return name[:-1] + chr(ord(name[-1]) + 1)
 
     def simulate(self):
+        self.grid = self.reset_grid(self.grid_size)
         self.agent_dict = self.agents_pool.create_dict()  # create a dictionary with key=agent_tag and value=agent
         self.simulate_time = -self.config.simulation_time
         while(self.simulate_time < self.config.simulation_time):
@@ -99,6 +113,7 @@ class Env(object):
                 action = agent.action(action_input, self.config.agent_output_dim)
                 self.update_grid(agent, self.action_translate[action])
             self.visual_grid()
+        self.print_scores()
         self.agents_pool.next_generation()
 
 
@@ -126,7 +141,7 @@ class Env(object):
     def append_grid_entry_info_to_action(self, pos0,pos1, action,agent):
         grid_entry = self.grid[pos0][pos1]
         # special case for "ENV" agent
-        if (grid_entry.agent_tag == "ENV"):
+        if (grid_entry.agent_tag == "_ENV_"):
             action.append(grid_entry.resource)
             action.append(grid_entry.agent_strength)
             action.append(self.config.num_agents + 1) # always the top ranking
@@ -145,11 +160,14 @@ class Env(object):
         # update the grid based on the action of the agent
         if (action == "drop"):
             agent.score -= 1 #dropped on the grid
-            old_conquerer_tag = self.grid[agent.location[0]][agent.location[1]].drop(agent.tag, agent.score)
+            old_conquerer_tag = self.grid[agent.location[0]][agent.location[1]].drop(agent.tag)
             if(old_conquerer_tag != None):
                 agent.taken_grid.append(self.grid[agent.location[0]][agent.location[1]])
-                if(old_conquerer_tag != "ENV"): # not newly conquered
-                    self.agent_dict[old_conquerer_tag].taken_grid.remove(self.grid[agent.location[0]][agent.location[1]])
+                if(old_conquerer_tag != "_ENV_"): # not newly conquered
+                    try:
+                        self.agent_dict[old_conquerer_tag].taken_grid.remove(self.grid[agent.location[0]][agent.location[1]])
+                    except:
+                        print("Error: agent_dict does not have key: " + old_conquerer_tag)
         elif (action == "move_left"):
             agent.location[1] = (agent.location[1] - 1) % self.grid_size
         # generate elif in same fashion for other three directions: move_right, move_up, move_down
@@ -171,12 +189,9 @@ class Env(object):
         self.agents_pool.clear_deltascore()
         for agent in self.agents_pool:
             for taken_grid in agent.taken_grid:
-                agent.deltascore += self.get_score(taken_grid.resource, agent.agent_strength)
+                agent.deltascore += self.get_score(taken_grid.resource, taken_grid.agent_strength)
         # update rankings
         self.agents_pool.update_rankings()
-
-
-
 
     def get_score(self, resource, agent_strength):
         # generate a logistic-like function that maps resource and agent_strength to a score, with dimishing returns only on agent_strength.
@@ -185,7 +200,13 @@ class Env(object):
     def print_rankings(self):
         for agent in self.agents_pool:
             print(agent.tag + ": " + str(agent.score_ranking) + ", " + str(agent.deltascore_ranking) + ", " + str(agent.taken_grid_ranking))
-
+    def print_scores(self):
+        for agent in self.agents_pool:
+            print("Score: " + str(agent.score) + ",\tIncrement: " + str(agent.deltascore) + "\tTaken_grid:" + str(len(agent.taken_grid)))
+        #get average score and increment for all agents in the pool
+        average_score = sum([agent.score for agent in self.agents_pool])/len(self.agents_pool.agents)
+        average_increment = sum([agent.deltascore for agent in self.agents_pool])/len(self.agents_pool.agents)
+        print("Average Score: " + str(average_score) + ",\tAverage Increment: " + str(average_increment))
     def visual_grid(self):
         # visualize the grid using matplotlib with animation
         if self.im is None:
@@ -193,6 +214,7 @@ class Env(object):
             plt.colorbar(self.im, ax=self.ax)
         else:
             self.im.set_data([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)])
+            self.im.set_clim( vmin=0, vmax=max([self.grid[i][j].agent_strength for j in range(self.grid_size) for i in range(self.grid_size)]))
         self.ax.set_title("Resource Distribution")
         self.ax.set_xlabel("x")
         self.ax.set_ylabel("y")

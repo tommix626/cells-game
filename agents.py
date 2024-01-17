@@ -20,6 +20,11 @@ class Agent(object):
         self.taken_grid = []
         self.taken_grid_ranking = None
 
+    def reset(self):
+        self.score = 0
+        self.deltascore = 0
+        self.taken_grid = []
+
 
     # given an input of np.array, using matrix multiplication to get an np.array with size output_size, then view it as a probability to sample from to get the argmax of the output.
     def action(self, input, output_size):

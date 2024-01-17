@@ -5,8 +5,7 @@ from env import Env
 if __name__ == '__main__':
     config = Config()
     env = Env(config)
-    for i in range(config.num_generations):
+    for i in range(config.num_generations*10):
         print("Generation: " + str(i))
-        for j in range(10):
-            env.simulate()
-        env.print_rankings()
+        env.simulate()
+        # env.print_scores()
