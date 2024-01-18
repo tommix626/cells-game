@@ -21,12 +21,9 @@ class GridEntry(object):
         if (self.agent_strength > strength):
             self.agent_strength -= strength
             return None
-        elif (self.agent_strength == strength):
-            original_agent_tag = self.agent_tag
-            self.agent_tag = "_ENV_"
-            self.agent_strength = 0
-            return original_agent_tag
         else:
+            if (self.agent_strength == strength):
+                strength = 2
             original_agent_tag = self.agent_tag
             self.agent_tag = agent_tag
             self.agent_strength = strength - self.agent_strength
@@ -67,6 +64,8 @@ class Env(object):
 
         self.fig, self.ax = plt.subplots(figsize=(3,3))
         self.im = None
+        self.color_fig, self.color_ax = plt.subplots(figsize=(3, 3))
+        self.color_im = None
     def reset_grid(self, grid_size):  # generate a grid of size grid_size, with random distributed resources
         grid = []
         for i in range(grid_size):
@@ -114,6 +113,8 @@ class Env(object):
                 self.update_grid(agent, self.action_translate[action])
             self.visual_grid()
         self.print_scores()
+        self.update_agent_information() #to get ranking for saving
+        self.agents_pool.save_agents()
         self.agents_pool.next_generation()
 
 
@@ -162,7 +163,7 @@ class Env(object):
             agent.score -= 1 #dropped on the grid
             old_conquerer_tag = self.grid[agent.location[0]][agent.location[1]].drop(agent.tag)
             if(old_conquerer_tag != None):
-                agent.taken_grid.append(self.grid[agent.location[0]][agent.location[1]])
+                agent.taken_grid.add(self.grid[agent.location[0]][agent.location[1]])
                 if(old_conquerer_tag != "_ENV_"): # not newly conquered
                     try:
                         self.agent_dict[old_conquerer_tag].taken_grid.remove(self.grid[agent.location[0]][agent.location[1]])
@@ -214,9 +215,17 @@ class Env(object):
             plt.colorbar(self.im, ax=self.ax)
         else:
             self.im.set_data([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)])
-            self.im.set_clim( vmin=0, vmax=max([self.grid[i][j].agent_strength for j in range(self.grid_size) for i in range(self.grid_size)]))
+            self.im.set_clim( vmin=0, vmax=20) #max([self.grid[i][j].agent_strength for j in range(self.grid_size) for i in range(self.grid_size)])
         self.ax.set_title("Resource Distribution")
         self.ax.set_xlabel("x")
         self.ax.set_ylabel("y")
         plt.draw()
         plt.pause(0.00001)  # Pause to allow the plot to update
+
+        #also update the color map, that colors a grid with different color corresponding to different agents territory by using grid[i][j].
+        if self.color_im is None:
+            self.color_im = self.color_ax.imshow([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)], cmap='hot', interpolation='nearest')
+            plt.colorbar(self.color_im, ax=self.color_ax)
+        else:
+            self.color_im.set_data([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)])
+            self.color_im.set_clim( vmin=0, vmax=20)

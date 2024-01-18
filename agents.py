@@ -4,6 +4,7 @@ import random
 import numpy as np
 
 
+
 class Agent(object):
     def __init__(self, tag, location, score=0, input_dim=10, output_dim=10):
         self.tag = tag
@@ -17,22 +18,22 @@ class Agent(object):
         self.deltascore = 0 # the score added to the agent after each round.
         self.deltascore_ranking = None
 
-        self.taken_grid = []
+        self.taken_grid = set([])
         self.taken_grid_ranking = None
 
     def reset(self):
         self.score = 0
         self.deltascore = 0
-        self.taken_grid = []
+        self.taken_grid = set([])
 
 
     # given an input of np.array, using matrix multiplication to get an np.array with size output_size, then view it as a probability to sample from to get the argmax of the output.
     def action(self, input, output_size):
         output = np.matmul(input, self.brain)
-        output = [max(0, x) for x in output]
-        output_prob = output / np.sum(output)
-        # return np.argmax(output_prob) # FIXME: whether add randomness in this place.
-        return np.argmax(np.random.multinomial(10, output_prob, size=1)) # sample 10 times with the output prob and choose the argmax as the action.
+        # output = [max(0.0001, x) for x in output]
+        # output_prob = output / np.sum(output)
+        return np.argmax(output) # FIXME: whether add randomness in this place.
+        # return np.argmax(np.random.multinomial(10, output_prob, size=1)) # sample 10 times with the output prob and choose the argmax as the action.
 
     def mutate(self, num_mutations):
         # mutate the brain by changing num_mutations elements in the matrix to random values.
@@ -45,3 +46,6 @@ class Agent(object):
 
     def __str__(self):
         return "Agent: " + self.tag + ", Score: " + str(self.score) + ", Brain: " + str(self.brain)
+
+    def save_brain(self):
+        np.save("./data/brain-rank-" + str(self.score_ranking), self.brain)

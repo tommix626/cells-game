@@ -87,5 +87,7 @@ class SelectionPool(object):
         self.update_deltascore_ranking()
         self.update_taken_grid_ranking()
 
-
+    def save_agents(self):
+        for agent in self.agents:
+            agent.save_brain()
 
