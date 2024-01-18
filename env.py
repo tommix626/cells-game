@@ -2,9 +2,11 @@
 # lands and try to get the most land. This is the enviornment (grid) that the agents will be in.
 import math
 import random
+
+import numpy as np
 from matplotlib import pyplot as plt
 
-from agents import Agent
+from agents import Agent, ComplicateAgent
 from selection import SelectionPool
 
 
@@ -53,7 +55,7 @@ class Env(object):
     def __init__(self, config):
         self.config = config
         self.grid_size = config.grid_size
-        self.grid = self.reset_grid(config.grid_size)
+        self.grid = self.create_grid(config.grid_size)
         self.agent_rank = []
         agents_pool = self.generate_first_gen_agents(config.num_agents)
         self.agents_pool = SelectionPool(agents_pool,config)  # manage evolution for all the agents in the pool
@@ -61,12 +63,11 @@ class Env(object):
         self.action_translate = {0: "drop", 1: "move_left", 2: "move_right", 3: "move_up", 4: "move_down"}
         self.simulate_time = None
 
-
-        self.fig, self.ax = plt.subplots(figsize=(3,3))
+        self.fig, (self.ax, self.color_ax) = plt.subplots(1, 2, figsize=(6, 3))
         self.im = None
-        self.color_fig, self.color_ax = plt.subplots(figsize=(3, 3))
         self.color_im = None
-    def reset_grid(self, grid_size):  # generate a grid of size grid_size, with random distributed resources
+        self.loc_im = None
+    def create_grid(self, grid_size):
         grid = []
         for i in range(grid_size):
             grid.append([])
@@ -74,13 +75,20 @@ class Env(object):
                 rsrc = random.randint(self.config.min_resource, self.config.max_resource)
                 grid[i].append(GridEntry(rsrc, (rsrc * 0.1),i,j))
         return grid
+    def reset_grid(self, grid_size):  # generate a grid of size grid_size, with random distributed resources
+        for i in range(grid_size):
+            for j in range(grid_size):
+                rsrc = random.randint(self.config.min_resource, self.config.max_resource)
+                self.grid[i][j].resource = rsrc
+                self.grid[i][j].agent_tag = "_ENV_"
+                self.grid[i][j].agent_strength = rsrc * 0.1
 
     def generate_first_gen_agents(self, num_agents):
         # generate a list of agents with same init strength and different tags (Strings from "A" to "Z" to "AA"...)
         name = "A"
         agents_pool = []
         for i in range(num_agents):
-            agents_pool.append(Agent(name,location= [random.randint(0,self.grid_size-1),random.randint(0,self.grid_size-1)],input_dim=self.config.agent_input_dim,output_dim=self.config.agent_output_dim))
+            agents_pool.append(ComplicateAgent(name,location= [random.randint(0,self.grid_size-1),random.randint(0,self.grid_size-1)],input_dim=self.config.agent_input_dim,output_dim=self.config.agent_output_dim))
 
             name = self.next_name(name)
         return agents_pool
@@ -98,7 +106,9 @@ class Env(object):
             return name[:-1] + chr(ord(name[-1]) + 1)
 
     def simulate(self):
-        self.grid = self.reset_grid(self.grid_size)
+        self.reset_grid(self.grid_size)
+        self.agents_pool.reset_all_agents()
+
         self.agent_dict = self.agents_pool.create_dict()  # create a dictionary with key=agent_tag and value=agent
         self.simulate_time = -self.config.simulation_time
         while(self.simulate_time < self.config.simulation_time):
@@ -107,7 +117,7 @@ class Env(object):
             self.add_score()
 
             # for each round, each agent will take an action, and then the env will update the grid and the agents' scores.
-            for agent in self.agents_pool:
+            for agent in self.agents_pool.agents: #
                 action_input = self.get_agent_action_input(agent)
                 action = agent.action(action_input, self.config.agent_output_dim)
                 self.update_grid(agent, self.action_translate[action])
@@ -130,32 +140,32 @@ class Env(object):
         self.append_grid_entry_info_to_action((agent.location[0]+1)%self.grid_size,agent.location[1], action,agent)
 
         # append global info to action
-        action.append(self.simulate_time)
-        action.append(agent.score)
-        action.append(agent.score_ranking)
-        action.append(agent.deltascore)
-        action.append(agent.deltascore_ranking)
-        action.append(len(agent.taken_grid))
-        action.append(agent.taken_grid_ranking)
+        action.append(self.simulate_time / self.config.simulation_time)
+        # action.append(agent.score)
+        action.append(agent.score_ranking / self.config.num_agents)
+        # action.append(agent.deltascore)
+        action.append(agent.deltascore_ranking  / self.config.num_agents)
+        # action.append(len(agent.taken_grid))
+        action.append(agent.taken_grid_ranking  / self.config.num_agents)
         return action
 
     def append_grid_entry_info_to_action(self, pos0,pos1, action,agent):
         grid_entry = self.grid[pos0][pos1]
         # special case for "ENV" agent
         if (grid_entry.agent_tag == "_ENV_"):
-            action.append(grid_entry.resource)
+            action.append(grid_entry.resource / self.config.max_resource)
             action.append(grid_entry.agent_strength)
-            action.append(self.config.num_agents + 1) # always the top ranking
+            action.append(1) # ENV always the top ranking
             return
 
         grid_agent = self.agent_dict[grid_entry.agent_tag]
-        action.append(grid_entry.resource)
+        action.append(grid_entry.resource / self.config.max_resource)
         if (grid_agent.tag == agent.tag):
             action.append(grid_entry.agent_strength)
             action.append(0)
         else:
             action.append(-grid_entry.agent_strength)
-            action.append(grid_agent.score_ranking)
+            action.append(grid_agent.score_ranking / self.config.num_agents)
 
     def update_grid(self, agent, action):
         # update the grid based on the action of the agent
@@ -164,11 +174,19 @@ class Env(object):
             old_conquerer_tag = self.grid[agent.location[0]][agent.location[1]].drop(agent.tag)
             if(old_conquerer_tag != None):
                 agent.taken_grid.add(self.grid[agent.location[0]][agent.location[1]])
+                assert(self.grid[agent.location[0]][agent.location[1]].agent_tag != old_conquerer_tag)
+                # if(old_conquerer_tag == "H-30-63"):
+                #     print("H-30-63 loss the grid: " + str(agent.location[0]) + ", " + str(agent.location[1]))
+                # if(agent.tag == "H-30-63"):
+                #     print("H-30-63 gain the grid: " + str(agent.location[0]) + ", " + str(agent.location[1]))
+                    # assert(self.agent_dict['H-30-63'].taken_grid.contains(self.grid[agent.location[0]][agent.location[1]]))
                 if(old_conquerer_tag != "_ENV_"): # not newly conquered
                     try:
                         self.agent_dict[old_conquerer_tag].taken_grid.remove(self.grid[agent.location[0]][agent.location[1]])
                     except:
                         print("Error: agent_dict does not have key: " + old_conquerer_tag)
+                # if(old_conquerer_tag == "H-30-63" or agent.tag == "H-30-63"):
+                #     print("end")
         elif (action == "move_left"):
             agent.location[1] = (agent.location[1] - 1) % self.grid_size
         # generate elif in same fashion for other three directions: move_right, move_up, move_down
@@ -208,24 +226,85 @@ class Env(object):
         average_score = sum([agent.score for agent in self.agents_pool])/len(self.agents_pool.agents)
         average_increment = sum([agent.deltascore for agent in self.agents_pool])/len(self.agents_pool.agents)
         print("Average Score: " + str(average_score) + ",\tAverage Increment: " + str(average_increment))
+
     def visual_grid(self):
-        # visualize the grid using matplotlib with animation
+        # Create a single figure with two subplots (axes) if they do not exist
+        if self.fig is None:
+            self.fig, (self.ax, self.color_ax) = plt.subplots(1, 2, figsize=(6, 3))
+
+        # Update the first subplot with agent strength distribution
+        agent_strength_data = [[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)]
         if self.im is None:
-            self.im = self.ax.imshow([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)], cmap='hot', interpolation='nearest')
+            self.im = self.ax.imshow(agent_strength_data, cmap='hot', interpolation='nearest')
             plt.colorbar(self.im, ax=self.ax)
         else:
-            self.im.set_data([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)])
-            self.im.set_clim( vmin=0, vmax=20) #max([self.grid[i][j].agent_strength for j in range(self.grid_size) for i in range(self.grid_size)])
-        self.ax.set_title("Resource Distribution")
+            self.im.set_data(agent_strength_data)
+            self.im.set_clim(vmin=0, vmax=20) # Adjust the clim if necessary
+
+        self.ax.set_title("Agent Strength Distribution")
         self.ax.set_xlabel("x")
         self.ax.set_ylabel("y")
+
+        # Update the second subplot with agent territory
+        agent_territory_data = [[sorted(list(self.agent_dict.keys())).index(self.grid[i][j].agent_tag) for j in range(self.grid_size)] for i in range(self.grid_size)]
+        if self.color_im is None:
+            self.color_im = self.color_ax.imshow(agent_territory_data, cmap='tab20', interpolation='nearest')
+            plt.colorbar(self.color_im, ax=self.color_ax)
+        else:
+            self.color_im.set_data(agent_territory_data)
+            # self.color_im.set_clim(vmin=0, vmax=100) # Adjust the clim if necessary
+
+        self.color_ax.set_title("Agent Territory")
+        self.color_ax.set_xlabel("x")
+        self.color_ax.set_ylabel("y")
+
+        # also draw the agent's current location on the plot with matching color, store the locations in self.loc_im and update it without redrawing the whole plot.
+        sorted_cmap_list = sorted(list(self.agent_dict.keys()))
+        agent_locations = [agent.location for agent in self.agents_pool]  # list of [y, x] pairs
+        agent_colors = [sorted_cmap_list.index(agent.tag) for agent in self.agents_pool]  # color indices
+
+        if self.loc_im is None:
+            # Create scatter plot for all agents
+            self.loc_im = self.ax.scatter([loc[0] for loc in agent_locations],  # x-coordinates
+                                          [loc[1] for loc in agent_locations],  # y-coordinates
+                                          c=agent_colors, cmap='tab20', marker='x', s=100)
+        else:
+            # Update scatter plot with new locations and colors
+            self.loc_im.set_offsets(agent_locations)
+            self.loc_im.set_array(np.array(agent_colors))
+        # Draw and pause to update the plots
         plt.draw()
         plt.pause(0.00001)  # Pause to allow the plot to update
 
-        #also update the color map, that colors a grid with different color corresponding to different agents territory by using grid[i][j].
-        if self.color_im is None:
-            self.color_im = self.color_ax.imshow([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)], cmap='hot', interpolation='nearest')
-            plt.colorbar(self.color_im, ax=self.color_ax)
-        else:
-            self.color_im.set_data([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)])
-            self.color_im.set_clim( vmin=0, vmax=20)
+    # def visual_grid(self):
+    #     # visualize the grid using matplotlib with animation
+    #     if self.im is None:
+    #         self.im = self.ax.imshow([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)], cmap='hot', interpolation='nearest')
+    #         plt.colorbar(self.im, ax=self.ax)
+    #     else:
+    #         self.im.set_data([[self.grid[i][j].agent_strength for j in range(self.grid_size)] for i in range(self.grid_size)])
+    #         self.im.set_clim( vmin=0, vmax=20) #max([self.grid[i][j].agent_strength for j in range(self.grid_size) for i in range(self.grid_size)])
+    #     self.ax.set_title("Agent_Strength Distribution")
+    #     self.ax.set_xlabel("x")
+    #     self.ax.set_ylabel("y")
+    #
+    #     plt.draw()
+    #     plt.pause(0.00001)  # Pause to allow the plot to update
+    #
+    #     #also update the color map, that colors a grid with different color corresponding to different agents territory by using grid[i][j].agent_tag I want a different color for each agent.
+    #     # it should not be a hot map, but a discrete color map.
+    #     # I would like to make sure we convert agent_tag from string to int using hashes or other methods.
+    #     if self.color_im is None:
+    #         self.color_im = self.color_ax.imshow([[hash(self.grid[i][j].agent_tag) for j in range(self.grid_size)] for i in range(self.grid_size)], cmap='tab20', interpolation='nearest')
+    #         plt.colorbar(self.color_im, ax=self.color_ax)
+    #     else:
+    #         self.color_im.set_data([[hash(self.grid[i][j].agent_tag) for j in range(self.grid_size)] for i in range(self.grid_size)])
+    #         self.color_im.set_clim(vmin=0, vmax=100)
+    #
+    #     self.color_ax.set_title("Agent Territory")
+    #     self.color_ax.set_xlabel("x")
+    #     self.color_ax.set_ylabel("y")
+    #
+    #
+    #     plt.draw()
+    #     plt.pause(0.00001)  # Pause to allow the plot to update

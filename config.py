@@ -2,9 +2,9 @@
 
 class Config(object):
     def __init__(self):
-        self.grid_size = 10
-        self.num_agents = 20
-        self.agent_input_dim = 22
+        self.grid_size = 20
+        self.num_agents = 100
+        self.agent_input_dim = 19
         self.agent_output_dim = 5
         self.min_resource = 1
         self.max_resource = 10

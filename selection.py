@@ -13,22 +13,26 @@ class SelectionPool(object):
         self.num_new_agents = config.num_new_agents
         self.num_mutations = config.num_mutations
         self.num_agents = config.num_agents # total number of agents in the pool
+        self.config = config
 
     def next_generation(self):
         # sort the agents by their scores
         self.agents.sort(key=lambda x: x.score, reverse=True)
         # get the top num_survivors agents
         survivors = self.agents[:self.num_survivors]
+        self.agents = survivors[:]
         # mutate the survivors by copying them for self.num_children amount and mutate the copyed version and added them to the next generation
         next_generation = survivors[:]
         for survivor in survivors:
             for i in range(self.num_children):
                 next_generation.append(self.mutate_survivor(survivor))
+                self.agents.append(next_generation[-1])
             survivor.reset()
         # breed the survivors by combining random two's brains and added them to the next generation
         for i in range(self.num_breeds):
             next_generation.append(self.breed_survivors(random.choice(survivors), random.choice(survivors)))
-        self.agents = next_generation
+            self.agents.append(next_generation[-1])
+        # self.agents = next_generation
 
         return next_generation # return the next generation of agents for the env to use for plotting (not needed yet)
 
@@ -58,7 +62,7 @@ class SelectionPool(object):
 
     def create_dict(self):
         #return a dictionary with key=agent_tag and value=agent
-        agent_dict = {}
+        agent_dict = {"_ENV_": None}
         for agent in self.agents:
             agent_dict[agent.tag] = agent
         return agent_dict
@@ -91,3 +95,7 @@ class SelectionPool(object):
         for agent in self.agents:
             agent.save_brain()
 
+    def reset_all_agents(self):
+        for agent in self.agents:
+            agent.reset()
+            agent.location = [random.randint(0, self.config.grid_size-1), random.randint(0, self.config.grid_size-1)
